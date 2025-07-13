@@ -12,11 +12,9 @@ const transport = pino.transport({
       level: 'info'
     },
     {
-      target: 'pino-roll',
+      target: 'pino/file',
       options: {
-        file: './crash.log',
-        frequency: 'daily',
-        size: '10m',
+        destination: './crash.log',
         mkdir: true
       },
       level: 'warn'
