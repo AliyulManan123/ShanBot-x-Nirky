@@ -106,6 +106,32 @@ export async function initializeHandler(sock) {
                         text = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || m.message.videoMessage?.caption || '';
                         
                         await handleAfkLogic(sock, m, text);
+
+                        const menfessSession = statements.getMenfessSession.get(m.sender);
+                if (menfessSession) {
+                    // Cek apakah sesi sudah kedaluwarsa
+                    if (Date.now() > menfessSession.expires_at) {
+                        statements.endMenfessSession.run(m.sender);
+                        menfessSessionCache.delete(m.sender);
+                        menfessSessionCache.delete(menfessSession.user1_jid === m.sender ? menfessSession.user2_jid : menfessSession.user1_jid);
+                        await sock.sendMessage(m.sender, { text: '⚠️ Sesi menfess telah berakhir karena sudah lebih dari 24 jam.' });
+                    } else if (!text.startsWith(config.prefix)) {
+                        // Jika bukan perintah, teruskan pesannya
+                        const partnerJid = menfessSession.user1_jid === m.sender ? menfessSession.user2_jid : menfessSession.user1_jid;
+                        try {
+                            // Meneruskan seluruh isi pesan (teks, gambar, video, stiker, dll)
+                            await sock.sendMessage(partnerJid, m.message);
+                        } catch (relayError) {
+                            logger.error({ err: relayError, from: m.sender, to: partnerJid }, 'Gagal meneruskan pesan menfess.');
+                            // Informasikan pengirim jika gagal & hentikan sesi
+                            await sock.sendMessage(m.sender, { text: 'Gagal mengirim pesan ke partnermu. Mungkin bot diblokir. Sesi dihentikan.' });
+                            statements.endMenfessSession.run(m.sender);
+                            menfessSessionCache.delete(m.sender);
+                            menfessSessionCache.delete(partnerJid);
+                        }
+                        return; // Hentikan proses lebih lanjut untuk pesan ini
+                    }
+                }
                         
                         if (isGroup) {
                             statements.incrementMessageCount.run(m.key.remoteJid, m.sender);
