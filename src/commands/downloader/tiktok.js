@@ -26,16 +26,18 @@ export default {
             const videoSD = response.data.downloads.find(dl => dl.label.includes('Unduh MP4') && !dl.label.includes('HD'));
             const audioMP3 = response.data.downloads.find(dl => dl.label === 'Unduh MP3');
 
-            if (videoSD) {
+            if (videoSD && videoSD.url) {
+                const videoBuffer = await axios.get(videoSD.url, { responseType: 'arraybuffer' });
                 await sock.sendMessage(m.key.remoteJid, {
-                    video: { url: videoSD.url },
+                    video: videoBuffer.data,
                     caption: `*✅ Berhasil download TikTok!*\n*Judul:* \`${response.data.title || '-'}\``,
                     fileName: `${response.data.title || 'tiktok_video'}.mp4`,
                     mimetype: 'video/mp4'
                 }, { quoted: m });
-            } else if (audioMP3) {
+            } else if (audioMP3 && audioMP3.url) {
+                const audioBuffer = await axios.get(audioMP3.url, { responseType: 'arraybuffer' });
                 await sock.sendMessage(m.key.remoteJid, {
-                    audio: { url: audioMP3.url },
+                    audio: audioBuffer.data,
                     mimetype: 'audio/mp4',
                     fileName: `${response.data.title || 'tiktok_audio'}.mp3`,
                     caption: `*✅ Berhasil download Audio TikTok!*\n*Judul:* \`${response.data.title || '-'}\``

@@ -3,8 +3,8 @@ import { LRUCache } from 'lru-cache';
 import config from '#config';
 
 const db = new Database(config.databaseName);
-db.pragma('journal_mode = MEMORY');
-db.pragma('synchronous = 0');
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = 1');
 db.pragma('busy_timeout = 5000');
 db.exec(`
     CREATE TABLE IF NOT EXISTS groups ( groupId TEXT PRIMARY KEY, welcome_enabled BOOLEAN DEFAULT 0, welcome_message TEXT DEFAULT 'Selamat datang @user di grup @subject!', antilink_enabled BOOLEAN DEFAULT 0 );

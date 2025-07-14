@@ -33,6 +33,33 @@ const rl = readline.createInterface({
 
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
+async function emergencySessionCleanup() {
+    const sessionDir = path.join(process.cwd(), 'baileys_session');
+    logger.warn(`Memulai pembersihan darurat pada direktori: ${sessionDir}`);
+    try {
+        const files = await fs.readdir(sessionDir);
+        let filesDeleted = 0;
+        const unlinkPromises = files.map(file => {
+            if (file !== 'creds.json') {
+                logger.info(`Menghapus file sesi untuk mengosongkan ruang: ${file}`);
+                filesDeleted++;
+                return fs.unlink(path.join(sessionDir, file));
+            }
+            return Promise.resolve();
+        });
+        await Promise.all(unlinkPromises);
+        if (filesDeleted > 0) {
+            logger.info(`Pembersihan darurat selesai: ${filesDeleted} file telah dihapus.`);
+            return true;
+        }
+        logger.warn('Tidak ada file yang bisa dihapus saat pembersihan darurat.');
+        return false;
+    } catch (cleanupError) {
+        logger.fatal({ err: cleanupError }, 'Gagal total saat membersihkan direktori sesi. Matikan bot secara manual.');
+        return false;
+    }
+}
+
 async function scheduleSessionCleanup() {
     const sessionDir = path.join(process.cwd(), 'baileys_session');
     try {
@@ -70,22 +97,19 @@ async function connectToWhatsApp() {
             await originalSaveCreds();
         } catch (error) {
             if (error.code === 'ENOSPC') {
-                logger.warn('Deteksi error ENOSPC (Disk/Inode Penuh) saat menyimpan kredensial sesi. Memulai pembersihan darurat...');
-                const sessionDir = path.join(process.cwd(), 'baileys_session');
-                try {
-                    const files = await fs.readdir(sessionDir);
-                    const unlinkPromises = files.map(file => {
-                        if (file !== 'creds.json') {
-                            logger.info(`Menghapus file sesi untuk mengosongkan ruang: ${file}`);
-                            return fs.unlink(path.join(sessionDir, file));
-                        }
-                        return Promise.resolve();
-                    });
-                    await Promise.all(unlinkPromises);
-                    logger.fatal('Pembersihan file sesi selesai. Bot akan direstart untuk menerapkan perubahan. Harap periksa status disk Anda.');
-                    process.exit(1);
-                } catch (cleanupError) {
-                    logger.fatal({ err: cleanupError }, 'Gagal total saat membersihkan direktori sesi. Matikan bot secara manual.');
+                logger.warn('Deteksi error ENOSPC (Disk/Inode Penuh) saat menyimpan kredensial sesi.');
+                const cleanupSuccess = await emergencySessionCleanup();
+                if (cleanupSuccess) {
+                    logger.info('Mencoba menyimpan kredensial kembali setelah pembersihan...');
+                    try {
+                        await originalSaveCreds();
+                        logger.info('Berhasil menyimpan kredensial setelah pembersihan darurat.');
+                    } catch (retryError) {
+                        logger.fatal({ err: retryError }, 'Gagal menyimpan kredensial bahkan setelah pembersihan. Bot berhenti.');
+                        process.exit(1);
+                    }
+                } else {
+                    logger.fatal('Pembersihan darurat gagal. Bot berhenti.');
                     process.exit(1);
                 }
             } else {

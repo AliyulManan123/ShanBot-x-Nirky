@@ -21,17 +21,25 @@ export default {
             }
 
             const downloadUrl = data.data[0].url_download;
-            const fileName = data.data[0].filename;
+            const mediaType = data.data[0].type;
 
             if (!downloadUrl) {
                 throw new Error('URL download tidak ditemukan dalam respons API.');
             }
 
-            await sock.sendMessage(m.key.remoteJid, { 
-                video: { url: downloadUrl, filename: fileName }, 
-                mimetype: 'video/mp4' 
-            }, { quoted: m });
-           
+            const mediaBuffer = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+
+            if (mediaType === 'video') {
+                await sock.sendMessage(m.key.remoteJid, { 
+                    video: mediaBuffer.data, 
+                    mimetype: 'video/mp4'
+                }, { quoted: m });
+            } else if (mediaType === 'image') {
+                await sock.sendMessage(m.key.remoteJid, { 
+                    image: mediaBuffer.data,
+                    mimetype: 'image/jpeg'
+                }, { quoted: m });
+            }
            
         } catch (error) {
             logger.error({ err: error, url }, 'Gagal download Instagram');

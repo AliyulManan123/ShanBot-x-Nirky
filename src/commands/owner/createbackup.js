@@ -15,42 +15,15 @@ export default {
             return await sock.sendMessage(m.key.remoteJid, { text: 'Perintah ini hanya untuk owner.' }, { quoted: m });
         }
 
-        const initialMessage = await sock.sendMessage(m.key.remoteJid, { text: 'Memulai proses backup... Mengumpulkan file dan membuat arsip .zip. Ini mungkin memakan waktu beberapa saat.' }, { quoted: m });
+        const initialMessage = await sock.sendMessage(m.key.remoteJid, { text: 'Memulai proses backup... Mengumpulkan file dan membuat arsip .zip di memori. Mohon tunggu.' }, { quoted: m });
 
         const projectRoot = process.cwd();
         const outputFileName = `backup-${Date.now()}.zip`;
-        const outputFilePath = path.join(projectRoot, outputFileName);
-        const output = fs.createWriteStream(outputFilePath);
         const archive = archiver('zip', { zlib: { level: 9 } });
+        const chunks = [];
 
-        const cleanup = async () => {
-            try {
-                if (fs.existsSync(outputFilePath)) {
-                    await fs.promises.unlink(outputFilePath);
-                    logger.info(`File backup sementara telah dihapus: ${outputFileName}`);
-                }
-            } catch (cleanupError) {
-                logger.error({ err: cleanupError }, 'Gagal menghapus file backup sementara.');
-            }
-        };
-
-        output.on('close', async () => {
-            try {
-                logger.info(`Arsip berhasil dibuat: ${outputFileName} (${archive.pointer()} total bytes)`);
-                await sock.sendMessage(m.key.remoteJid, {
-                    document: { url: outputFilePath },
-                    fileName: outputFileName,
-                    mimetype: 'application/zip',
-                    caption: '✅ Backup selesai! Ini dia file arsipnya.'
-                }, { quoted: m });
-            } catch (sendError) {
-                logger.error({ err: sendError }, 'Gagal mengirim file backup.');
-                await sock.sendMessage(m.key.remoteJid, { text: 'Gagal mengirim file backup setelah berhasil dibuat.' }, { quoted: m });
-            } finally {
-                await cleanup();
-            }
-        });
-
+        archive.on('data', chunk => chunks.push(chunk));
+        
         archive.on('warning', (err) => {
             logger.warn({ err }, 'Peringatan dari proses backup');
         });
@@ -58,23 +31,33 @@ export default {
         archive.on('error', async (err) => {
             logger.error({ err }, 'Error fatal saat membuat arsip backup.');
             await sock.sendMessage(m.key.remoteJid, { text: `Gagal total membuat backup: ${err.message}`, edit: initialMessage.key });
-            await cleanup();
         });
 
-        archive.pipe(output);
+        archive.on('end', async () => {
+            try {
+                const backupBuffer = Buffer.concat(chunks);
+                logger.info(`Arsip berhasil dibuat di memori: ${outputFileName} (${backupBuffer.length} total bytes)`);
+                await sock.sendMessage(m.key.remoteJid, {
+                    document: backupBuffer,
+                    fileName: outputFileName,
+                    mimetype: 'application/zip',
+                    caption: '✅ Backup selesai! Ini dia file arsipnya.'
+                }, { quoted: m });
+            } catch (sendError) {
+                logger.error({ err: sendError }, 'Gagal mengirim file backup.');
+                await sock.sendMessage(m.key.remoteJid, { text: 'Gagal mengirim file backup setelah berhasil dibuat.' }, { quoted: m });
+            }
+        });
 
         try {
-            const dbName = config.databaseName || 'db.sqlite';
             archive.glob('**/*', {
                 cwd: projectRoot,
-                ignore: ['node_modules/**', 'baileys_session/**', outputFileName]
+                ignore: ['node_modules/**', 'baileys_session/**', '*.zip']
             });
-
             await archive.finalize();
         } catch (error) {
             logger.error({ err: error }, 'Error saat menambahkan file ke arsip');
             await sock.sendMessage(m.key.remoteJid, { text: `Terjadi kesalahan saat memproses file untuk di-backup.`, edit: initialMessage.key });
-            await cleanup();
         }
     }
 };

@@ -46,8 +46,9 @@ export default {
             if (!data.success || !data.audio_url) {
                 throw new Error('API download gagal atau tidak menemukan audio.');
             }
+            const audioBuffer = await axios.get(data.audio_url, { responseType: 'arraybuffer' });
             await sock.sendMessage(m.key.remoteJid, { 
-                audio: { url: data.audio_url }, 
+                audio: audioBuffer.data, 
                 mimetype: 'audio/mpeg' 
             }, { quoted: m });
         } catch (error) {
@@ -90,7 +91,6 @@ export default {
 
         await sock.sendMessage(m.key.remoteJid, { text: 'Oke, siap! Alicia lagi manggil arsitek kode (pake Gemini, lebih nurut katanya)... 👩‍💻✨' }, { quoted: m });
 
-        let tempFilePath = '';
         try {
             const fullInstruction = `Buatlah sebuah plugin lengkap untuk bot WhatsApp Baileys berdasarkan deskripsi berikut:\n\n**Deskripsi Fitur:** "${query}"\n\nPastikan Anda mengikuti SEMUA aturan yang diberikan dalam system prompt Anda (terutama tag [FILENAME] dan [CATEGORY] serta HANYA mengembalikan kode mentah tanpa format tambahan).`;
             
@@ -108,20 +108,19 @@ export default {
                 throw new Error('AI tidak memberikan metadata FILENAME atau CATEGORY yang diperlukan.');
             }
 
-            const filename = filenameMatch[1].trim();
-            const category = categoryMatch[1].trim();
+            const filename = filenameMatch.trim();
+            const category = categoryMatch.trim();
 
             const cleanCode = rawCode
                 .replace(/\[FILENAME:.*?\]\n/, '')
                 .replace(/\[CATEGORY:.*?\]\n\n?/, '');
 
-            tempFilePath = path.join(process.cwd(), filename);
-            await fs.writeFile(tempFilePath, cleanCode);
+            const codeBuffer = Buffer.from(cleanCode, 'utf-8');
 
             const caption = `✅ *Fitur Berhasil Dibuat!*\n\n*Nama File:* \`${filename}\`\n*Kategori Disarankan:* \`${category}\`\n\nNih filenya, bro. Cek dulu kodenya sebelum di-upload manual ke folder \`src/commands/${category}/\` ya.`;
 
             await sock.sendMessage(m.key.remoteJid, {
-                document: { url: tempFilePath },
+                document: codeBuffer,
                 fileName: filename,
                 mimetype: 'application/javascript',
                 caption: caption
@@ -130,14 +129,6 @@ export default {
         } catch (error) {
             logger.error({ err: error, query }, 'Gagal membuat file fitur dengan AI');
             await sock.sendMessage(m.key.remoteJid, { text: `Waduh, gagal bikin file fiturnya, bro.\n\n*Error:* ${error.message}` }, { quoted: m });
-        } finally {
-            if (tempFilePath) {
-                try {
-                    await fs.unlink(tempFilePath);
-                } catch (unlinkError) {
-                    logger.error({ err: unlinkError }, `Gagal menghapus file sementara: ${tempFilePath}`);
-                }
-            }
         }
     }
 };
