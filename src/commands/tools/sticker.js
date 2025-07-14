@@ -47,8 +47,8 @@ export default {
                 { logger }
             );
 
-            let packname = 'NirKyy Stickers';
-            let author = 'NirKyy Dev';
+            let packname = 'Sticker By';
+            let author = 'ShanBot';
 
             const argString = args.join(' ').trim();
             const parts = argString.split('|').map(s => s.trim());
